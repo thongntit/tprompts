@@ -1,6 +1,6 @@
 {
   "name": "tprompts",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Universal AI prompt installer for coding editors",
   "main": "lib/index.js",
   "bin": {
