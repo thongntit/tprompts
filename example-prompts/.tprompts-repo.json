@@ -1,0 +1,9 @@
+{
+  "name": "Example Prompts Collection",
+  "description": "Sample prompts repository demonstrating tprompts.json configuration format",
+  "author": "tprompts",
+  "version": "1.0.0",
+  "homepage": "https://github.com/example/prompts",
+  "defaultEditor": "vscode",
+  "categories": ["development", "productivity", "example"]
+}
