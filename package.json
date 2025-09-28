@@ -1,0 +1,66 @@
+{
+  "name": "tprompts",
+  "version": "1.0.0",
+  "description": "Universal AI prompt installer for coding editors",
+  "main": "lib/index.js",
+  "bin": {
+    "tprompts": "./lib/cli.js"
+  },
+  "scripts": {
+    "test": "jest",
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "lib/",
+    "prompts/",
+    "workflows/"
+  ],
+  "keywords": [
+    "ai",
+    "prompts",
+    "cli",
+    "windsurf",
+    "cursor",
+    "vscode",
+    "claude",
+    "installer"
+  ],
+  "author": "hiraism",
+  "license": "MIT",
+  "dependencies": {
+    "@oclif/core": "^3.15.0",
+    "@oclif/plugin-help": "^6.0.0",
+    "chalk": "^4.1.2",
+    "fs-extra": "^11.2.0",
+    "glob": "^10.3.0",
+    "inquirer": "^8.2.6",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.0",
+    "@types/inquirer": "^8.2.0",
+    "@types/jest": "^29.0.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.0.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "oclif": {
+    "bin": "tprompts",
+    "dirname": "tprompts",
+    "commands": "./lib/commands",
+    "plugins": [
+      "@oclif/plugin-help"
+    ],
+    "topicSeparator": " "
+  },
+  "typescript": {
+    "outDir": "lib",
+    "rootDir": "src"
+  }
+}
