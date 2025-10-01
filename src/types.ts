@@ -7,6 +7,8 @@ export interface Repository {
   path?: string // Local path where repo is stored
   lastUpdated?: string
   metadata?: RepositoryMetadata
+  currentVersion?: string // Current checked out branch/tag/commit
+  requestedVersion?: string // User-requested version for updates
 }
 
 export interface RepositoryMetadata {
@@ -17,6 +19,8 @@ export interface RepositoryMetadata {
   homepage?: string
   defaultEditor?: SupportedEditor
   categories?: string[]
+  temporary?: boolean
+  originalUrl?: string
 }
 
 export interface RepositoryRegistry {
@@ -86,4 +90,5 @@ export interface ParsedPromptIdentifier {
   repository: string
   prompt: string
   isUrl: boolean
+  originalUrl?: string
 }

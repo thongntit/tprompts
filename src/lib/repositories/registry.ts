@@ -8,7 +8,7 @@ export class RepositoryRegistryManager {
     this.userConfig = new UserConfigManager()
   }
 
-  async addRepository(name: string, url: string, type: 'git' | 'local'): Promise<void> {
+  async addRepository(name: string, url: string, type: 'git' | 'local', version?: string): Promise<void> {
     const registry = await this.userConfig.getRepositoryRegistry()
 
     if (registry.repositories[name]) {
@@ -19,7 +19,9 @@ export class RepositoryRegistryManager {
       name,
       url,
       type,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      currentVersion: version,
+      requestedVersion: version
     }
 
     registry.repositories[name] = repository
