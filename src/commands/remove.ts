@@ -1,28 +1,26 @@
 import { Command, Args, Flags } from '@oclif/core'
 import chalk from 'chalk'
-import * as path from 'path'
+import inquirer from 'inquirer'
 import * as fs from 'fs-extra'
-import * as inquirer from 'inquirer'
+import * as path from 'path'
 import { RepositoryRegistryManager } from '../lib/repositories/registry'
-import { UrlRepositoryManager } from '../lib/repositories/url'
 import { PromptConfigParser } from '../lib/config/prompt-config'
 import { FileProcessor } from '../lib/utils/file-processor'
 import { PathResolver } from '../lib/utils/path-resolver'
 import { SupportedEditor } from '../types'
 
-export default class InstallCommand extends Command {
-  static description = 'Install a prompt from a repository to an editor'
+export default class RemoveCommand extends Command {
+  static description = 'Remove installed prompts from an editor'
 
   static examples = [
     '<%= config.bin %> <%= command.id %> my-repo/prompt-name vscode',
     '<%= config.bin %> <%= command.id %> my-repo/prompt-name --editor cursor',
-    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/prompt-name windsurf',
-    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/tree/main/prompt-name cursor'
+    '<%= config.bin %> <%= command.id %> my-repo/prompt-name windsurf --dry-run'
   ]
 
   static args = {
     prompt: Args.string({
-      description: 'Prompt identifier (repo/prompt or URL)',
+      description: 'Prompt identifier (repo/prompt)',
       required: true
     }),
     editor: Args.string({
@@ -39,16 +37,15 @@ export default class InstallCommand extends Command {
     }),
     force: Flags.boolean({
       char: 'f',
-      description: 'Overwrite existing files without confirmation'
+      description: 'Remove files without confirmation'
     }),
     'dry-run': Flags.boolean({
-      description: 'Show what would be installed without actually installing'
+      description: 'Show what would be removed without actually removing'
     })
   }
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(InstallCommand)
-    let cleanup: (() => Promise<void>) | undefined
+    const { args, flags } = await this.parse(RemoveCommand)
 
     try {
       const registryManager = new RepositoryRegistryManager()
@@ -56,19 +53,16 @@ export default class InstallCommand extends Command {
       // Parse prompt identifier
       const promptId = PathResolver.parsePromptIdentifier(args.prompt)
       
+      if (promptId.isUrl) {
+        throw new Error('Cannot remove prompts installed from direct URLs. Only registered repository prompts can be removed.')
+      }
+
       // Resolve repository
       let repository
-      
-      if (promptId.isUrl) {
-        // Handle direct URL installation
-        const urlManager = new UrlRepositoryManager()
-        const result = await urlManager.downloadFromUrl(promptId.originalUrl!, promptId.prompt)
-        repository = result.repository
-        cleanup = result.cleanup
-      } else if (promptId.repository) {
+      if (promptId.repository) {
         repository = await registryManager.getRepository(promptId.repository)
         if (!repository) {
-          throw new Error(`Repository '${promptId.repository}' is not registered. Use 'tprompts register' first.`)
+          throw new Error(`Repository '${promptId.repository}' is not registered.`)
         }
       } else {
         // Use default repository
@@ -124,11 +118,11 @@ export default class InstallCommand extends Command {
 
       const editorConfig = promptConfig.editors[editor as SupportedEditor]
 
-      this.log(`\n${chalk.blue('Installing')} ${chalk.bold(promptConfig.name)} to ${chalk.green(editor)}...`)
+      this.log(`\n${chalk.red('Removing')} ${chalk.bold(promptConfig.name)} from ${chalk.green(editor)}...`)
       this.log(`${chalk.dim('Repository:')} ${repository.name}`)
       this.log(`${chalk.dim('Prompt:')} ${promptId.prompt}`)
 
-      // Process files according to configuration
+      // Calculate what files would be installed (to know what to remove)
       const targets = await FileProcessor.processFiles(
         promptPath,
         editorConfig,
@@ -136,66 +130,114 @@ export default class InstallCommand extends Command {
       )
 
       if (targets.length === 0) {
-        this.log(chalk.yellow('No files to install'))
+        this.log(chalk.yellow('No files configured for removal'))
         return
       }
 
-      // Show what will be installed
-      this.log(`\n${chalk.bold('Files to install:')}`)
-      for (const target of targets) {
+      // Filter to only existing files
+      const existingTargets = targets.filter(target => fs.existsSync(target.targetPath))
+
+      if (existingTargets.length === 0) {
+        this.log(chalk.yellow('No installed files found to remove'))
+        return
+      }
+
+      // Show what will be removed
+      this.log(`\n${chalk.bold('Files to remove:')}`)
+      for (const target of existingTargets) {
         const relativePath = path.relative(process.cwd(), target.targetPath)
-        const sourceFile = path.relative(promptPath, target.sourcePath)
-        
-        let indicator = chalk.green('✓')
-        if (fs.existsSync(target.targetPath)) {
-          indicator = chalk.yellow('⚠')
-        }
-        
-        this.log(`  ${indicator} ${sourceFile} → ${relativePath}`)
-        
-        if (target.prefix) {
-          this.log(`    ${chalk.dim('+ prefix:')} ${chalk.dim(target.prefix.replace(/\n/g, '\\n'))}`)
-        }
-        if (target.suffix) {
-          this.log(`    ${chalk.dim('+ suffix:')} ${chalk.dim(target.suffix.replace(/\n/g, '\\n'))}`)
+        this.log(`  ${chalk.red('✗')} ${relativePath}`)
+      }
+
+      // Show files that would be configured but don't exist
+      const missingTargets = targets.filter(target => !fs.existsSync(target.targetPath))
+      if (missingTargets.length > 0) {
+        this.log(`\n${chalk.dim('Files not found (already removed or never installed):')}`)
+        for (const target of missingTargets) {
+          const relativePath = path.relative(process.cwd(), target.targetPath)
+          this.log(`  ${chalk.dim('↷')} ${relativePath}`)
         }
       }
 
       // Dry run mode
       if (flags['dry-run']) {
-        this.log(`\n${chalk.blue('Dry run complete')} - no files were modified`)
+        this.log(`\n${chalk.blue('Dry run complete')} - no files were removed`)
         return
       }
 
-      // Check for existing files and confirm overwrite
-      const existingFiles = targets.filter(t => fs.existsSync(t.targetPath))
-      if (existingFiles.length > 0 && !flags.force) {
-        this.log(`\n${chalk.yellow('Warning:')} ${existingFiles.length} files already exist`)
+      // Confirm removal
+      if (!flags.force) {
+        this.log(`\n${chalk.yellow('Warning:')} This will permanently delete ${existingTargets.length} files`)
         const { confirm } = await inquirer.prompt([{
           type: 'confirm',
           name: 'confirm',
-          message: 'Overwrite existing files?',
+          message: 'Remove these files?',
           default: false
         }])
 
         if (!confirm) {
-          this.log(chalk.yellow('Installation cancelled'))
+          this.log(chalk.yellow('Removal cancelled'))
           return
         }
       }
 
-      // Install files
-      await FileProcessor.installTargets(targets)
+      // Remove files
+      let removedCount = 0
+      let failedCount = 0
 
-      this.log(`\n${chalk.green('✓ Installation complete!')} Installed ${targets.length} files to ${editor}`)
+      for (const target of existingTargets) {
+        try {
+          await fs.remove(target.targetPath)
+          removedCount++
+          
+          // Try to remove empty parent directories
+          await this.removeEmptyDirectories(path.dirname(target.targetPath))
+        } catch (error: any) {
+          this.log(`${chalk.red('✗')} Failed to remove ${target.targetPath}: ${error.message}`)
+          failedCount++
+        }
+      }
+
+      if (failedCount === 0) {
+        this.log(`\n${chalk.green('✓ Removal complete!')} Removed ${removedCount} files from ${editor}`)
+      } else {
+        this.log(`\n${chalk.yellow('⚠ Removal completed with errors:')} ${removedCount} removed, ${failedCount} failed`)
+      }
 
     } catch (error: any) {
       this.error(error.message)
-    } finally {
-      // Clean up temporary files for URL installations
-      if (cleanup) {
-        await cleanup()
+    }
+  }
+
+  private async removeEmptyDirectories(dirPath: string): Promise<void> {
+    try {
+      // Don't remove the project root or important directories
+      const projectRoot = process.cwd()
+      const relativePath = path.relative(projectRoot, dirPath)
+      
+      // Skip if it's the project root or a parent directory
+      if (!relativePath || relativePath.startsWith('..') || relativePath === '.') {
+        return
       }
+
+      // Skip certain important directories
+      const importantDirs = ['.git', 'node_modules', 'src', 'lib', 'dist', 'build']
+      if (importantDirs.some(dir => relativePath === dir || relativePath.startsWith(dir + '/'))) {
+        return
+      }
+
+      // Check if directory exists and is empty
+      if (fs.existsSync(dirPath)) {
+        const items = await fs.readdir(dirPath)
+        if (items.length === 0) {
+          await fs.rmdir(dirPath)
+          
+          // Recursively check parent directory
+          await this.removeEmptyDirectories(path.dirname(dirPath))
+        }
+      }
+    } catch (error) {
+      // Ignore errors when removing empty directories - this is a nice-to-have cleanup
     }
   }
 }

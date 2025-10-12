@@ -4,17 +4,39 @@ export class PathResolver {
   static parsePromptIdentifier(identifier: string): ParsedPromptIdentifier {
     // Handle URL format: https://github.com/user/repo/prompt-name
     if (identifier.startsWith('http')) {
-      const parts = identifier.split('/')
-      if (parts.length >= 5) {
-        const repoName = parts[4] // github.com/user/repo
-        const promptName = parts.slice(5).join('/') // everything after repo
-        return {
-          repository: repoName,
-          prompt: promptName,
-          isUrl: true
+      try {
+        const url = new URL(identifier)
+        const pathParts = url.pathname.split('/').filter(p => p)
+        
+        if (pathParts.length < 3) {
+          throw new Error(`URL must include repository and prompt path`)
         }
+
+        // For GitHub URLs: /user/repo/tree/branch/prompt-name or /user/repo/prompt-name
+        let promptStartIndex = 2 // After user/repo
+        
+        // Skip 'tree/branch' if present in GitHub URLs
+        if (pathParts[2] === 'tree' && pathParts.length > 4) {
+          promptStartIndex = 4 // Skip tree/branch
+        }
+
+        const user = pathParts[0]
+        const repo = pathParts[1].replace(/\.git$/, '')
+        const promptName = pathParts.slice(promptStartIndex).join('/')
+        
+        if (!promptName) {
+          throw new Error(`No prompt path specified in URL`)
+        }
+
+        return {
+          repository: `${user}/${repo}`,
+          prompt: promptName,
+          isUrl: true,
+          originalUrl: identifier
+        }
+      } catch (error: any) {
+        throw new Error(`Invalid URL format: ${identifier} - ${error.message}`)
       }
-      throw new Error(`Invalid URL format: ${identifier}`)
     }
 
     // Handle repo/prompt format: my-repo/prompt-name

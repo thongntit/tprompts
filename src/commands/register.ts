@@ -28,6 +28,10 @@ export default class RegisterCommand extends Command {
     default: Flags.boolean({
       char: 'd',
       description: 'Set as default repository'
+    }),
+    version: Flags.string({
+      char: 'v',
+      description: 'Specific branch, tag, or commit to checkout (Git repositories only)'
     })
   }
 
@@ -46,16 +50,29 @@ export default class RegisterCommand extends Command {
       this.log(`${chalk.dim('Source:')} ${args.source}`)
 
       // Validate the repository
+      let repoPath: string | undefined
       if (repoType === 'git') {
         const gitManager = new GitRepositoryManager()
-        await gitManager.validateAndClone(repoName, args.source)
+        repoPath = await gitManager.validateAndClone(repoName, args.source)
+        
+        // Checkout specific version if requested
+        if (flags.version) {
+          this.log(`${chalk.blue('Checking out')} version: ${flags.version}`)
+          const tempRepo = { name: repoName, url: args.source, type: 'git' as const, path: repoPath }
+          await gitManager.checkoutVersion(tempRepo, flags.version)
+          this.log(`${chalk.green('✓')} Checked out version: ${flags.version}`)
+        }
       } else {
         const localManager = new LocalRepositoryManager()
         await localManager.validateLocalPath(args.source)
+        
+        if (flags.version) {
+          this.log(chalk.yellow('⚠ Version flag ignored for local repositories'))
+        }
       }
 
-      // Register the repository
-      await registryManager.addRepository(repoName, args.source, repoType)
+      // Register the repository with version info
+      await registryManager.addRepository(repoName, args.source, repoType, flags.version)
 
       // Set as default if requested
       if (flags.default) {

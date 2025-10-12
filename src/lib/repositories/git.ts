@@ -78,6 +78,108 @@ export class GitRepositoryManager {
     }
   }
 
+  async checkoutVersion(repository: Repository, version: string): Promise<void> {
+    if (!repository.path || !fs.existsSync(repository.path)) {
+      throw new Error(`Repository path not found: ${repository.path}`)
+    }
+
+    try {
+      this.log(`Checking out version: ${version}`)
+      
+      // First, fetch all remote references to ensure we have the latest
+      execSync('git fetch --all --tags', {
+        cwd: repository.path,
+        stdio: 'pipe',
+        timeout: 60000 // 1 minute timeout
+      })
+
+      // Try to checkout the specified version (branch, tag, or commit)
+      execSync(`git checkout ${version}`, {
+        cwd: repository.path,
+        stdio: 'pipe',
+        timeout: 30000 // 30 second timeout
+      })
+
+      this.log(`Successfully checked out ${version}`)
+    } catch (error: any) {
+      throw new Error(`Failed to checkout version ${version}: ${error.message}`)
+    }
+  }
+
+  async getCurrentVersion(repository: Repository): Promise<string> {
+    if (!repository.path || !fs.existsSync(repository.path)) {
+      throw new Error(`Repository path not found: ${repository.path}`)
+    }
+
+    try {
+      // Get current branch or commit
+      const result = execSync('git branch --show-current', {
+        cwd: repository.path,
+        stdio: 'pipe',
+        encoding: 'utf8'
+      }).trim()
+
+      if (result) {
+        return result // We're on a branch
+      }
+
+      // If not on a branch, get the commit hash
+      const commit = execSync('git rev-parse HEAD', {
+        cwd: repository.path,
+        stdio: 'pipe',
+        encoding: 'utf8'
+      }).trim()
+
+      return commit.substring(0, 7) // Short commit hash
+    } catch (error: any) {
+      throw new Error(`Failed to get current version: ${error.message}`)
+    }
+  }
+
+  async listAvailableVersions(repository: Repository): Promise<{ branches: string[], tags: string[] }> {
+    if (!repository.path || !fs.existsSync(repository.path)) {
+      throw new Error(`Repository path not found: ${repository.path}`)
+    }
+
+    try {
+      // Fetch latest references
+      execSync('git fetch --all --tags', {
+        cwd: repository.path,
+        stdio: 'pipe',
+        timeout: 60000
+      })
+
+      // Get remote branches
+      const branchesOutput = execSync('git branch -r', {
+        cwd: repository.path,
+        stdio: 'pipe',
+        encoding: 'utf8'
+      })
+
+      const branches = branchesOutput
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.includes('->'))
+        .map(line => line.replace('origin/', ''))
+
+      // Get tags
+      const tagsOutput = execSync('git tag --sort=-version:refname', {
+        cwd: repository.path,
+        stdio: 'pipe',
+        encoding: 'utf8'
+      })
+
+      const tags = tagsOutput
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line)
+
+      return { branches, tags }
+    } catch (error: any) {
+      throw new Error(`Failed to list versions: ${error.message}`)
+    }
+  }
+
   async getRepositoryMetadata(repoPath: string): Promise<RepositoryMetadata | undefined> {
     const metadataPath = path.join(repoPath, '.tprompts-repo.json')
     
