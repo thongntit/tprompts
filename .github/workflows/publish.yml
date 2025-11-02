@@ -6,8 +6,12 @@ on:
       - main
       - dev
 
+permissions:
+  contents: write
+  pull-requests: read
+
 jobs:
-  publish:
+  publish-and-release:
     runs-on: ubuntu-latest
 
     env:
@@ -16,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -29,7 +35,24 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Prepare dev prerelease version
+      - name: Prepare version
+        id: version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0]")
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+
+          if [ "$BRANCH_NAME" = "dev" ]; then
+            VERSION="${BASE_VERSION}-dev.${GITHUB_RUN_NUMBER}"
+          else
+            VERSION="${BASE_VERSION}"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Update package.json version
         if: github.ref == 'refs/heads/dev'
         run: |
           node <<'EOF'
@@ -39,9 +62,7 @@ jobs:
           const pkgPath = path.resolve('package.json');
           const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
-          const base = pkg.version.split('-')[0];
-          const suffix = process.env.GITHUB_RUN_NUMBER;
-          pkg.version = `${base}-dev.${suffix}`;
+          pkg.version = '${{ steps.version.outputs.version }}';
 
           fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
@@ -63,3 +84,61 @@ jobs:
       - name: Publish release build
         if: github.ref == 'refs/heads/main'
         run: npm publish --access public
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag already exists, skipping release"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag does not exist, will create release"
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          echo "## What's Changed" > CHANGELOG.md
+
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "First release - including all commits" >> CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          else
+            echo "Changes since $PREV_TAG:" >> CHANGELOG.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges >> CHANGELOG.md
+          fi
+
+          echo "" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ steps.version.outputs.tag }}" >> CHANGELOG.md
+
+          cat CHANGELOG.md
+
+      - name: Create Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: Release ${{ steps.version.outputs.tag }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: ${{ steps.version.outputs.branch != 'main' }}
+
+      - name: Summary
+        run: |
+          echo "✅ Published to npm successfully!"
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Tag: ${{ steps.version.outputs.tag }}"
+          echo "Branch: ${{ steps.version.outputs.branch }}"
+          if [ "${{ steps.check_tag.outputs.exists }}" = "false" ]; then
+            echo "GitHub Release: Created"
+          else
+            echo "GitHub Release: Skipped (tag exists)"
+          fi
