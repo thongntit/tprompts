@@ -1,6 +1,6 @@
 # tprompts
 
-Universal CLI for installing and managing prompt packs across popular coding editors. `tprompts` keeps your prompt content in standalone repositories, lets you register them locally (from Git or the filesystem), discover the prompt packs they expose, and install the configured files into editors such as VS Code, Cursor, Windsurf, and Claude Code.
+Universal CLI for installing prompt packs directly into your coding editors. Install prompts from any GitHub URL into VS Code, Cursor, Windsurf, Claude Code, or any other editor - no registration required.
 
 ## Repository Layout
 - `src/` – TypeScript source for the Oclif-based CLI (all commands)
@@ -11,14 +11,11 @@ Universal CLI for installing and managing prompt packs across popular coding edi
 - `node_modules/`, `package.json`, `tsconfig.json` – Standard Node.js project scaffolding
 
 ## Key Features
-- **Repository Management**: Register repositories from Git URLs or local paths (`tprompts register`)
-- **Version Control**: Checkout specific branches, tags, or commits; update to latest (`tprompts update`, `tprompts version`)
-- **Direct URL Installation**: Install prompts directly from GitHub URLs without registration
-- **Multi-Repository Support**: Manage multiple prompt sources with optional default selection (`tprompts repos`)
-- **Prompt Discovery**: Browse available prompts and view metadata (`tprompts list --verbose`)
-- **Smart Installation**: Install prompts with prefix/suffix processing, conflict detection, and dry-run mode (`tprompts install`)
-- **Clean Removal**: Uninstall prompts and clean up empty directories (`tprompts remove`)
-- **Editor Support**: VS Code, Cursor, Windsurf, and Claude Code via per-editor configuration blocks
+- **Direct URL Installation**: Install prompts directly from GitHub URLs - no registration needed
+- **Universal Editor Support**: Works with any editor - not limited to predefined list
+- **Smart Installation**: Prefix/suffix processing, conflict detection, and dry-run mode
+- **Simple & Fast**: One command to install, one to remove
+- **Preview Changes**: Use `--dry-run` to see what will be installed before making changes
 
 ## Prerequisites
 - Node.js 16+
@@ -52,61 +49,23 @@ npm install -g @thongntit/tprompts
 npx @thongntit/tprompts --help
 ```
 
-## CLI Usage
+## Usage
 
-### Basic Workflow
 ```bash
-# 1. Register a repository (Git URL or local folder)
-tprompts register https://github.com/user/my-prompts.git
-tprompts register --name "examples" --default ./example-prompts
-
-# 2. List available prompts
-tprompts list examples --verbose
-
-# 3. Install a prompt pack into an editor
-tprompts install examples/coding-assistant vscode
-tprompts install examples/coding-assistant cursor --dry-run
-```
-
-### Direct URL Installation (No Registration Required)
-```bash
-# Install directly from GitHub
+# Install a prompt from GitHub URL
 tprompts install https://github.com/user/repo/prompt-name vscode
-tprompts install https://github.com/user/repo/tree/main/prompt-name cursor
+tprompts install https://github.com/user/repo/tree/main/prompts/my-prompt cursor
+
+# Works with any editor name your prompt pack supports
+tprompts install https://github.com/thongntit/prompts/tree/main/prompts/obisidian-second-brain claude
+tprompts install https://github.com/user/repo/prompt windsurf
+
+# Preview before installing
+tprompts install https://github.com/user/repo/prompt vscode --dry-run
+
+# Force overwrite existing files
+tprompts install https://github.com/user/repo/prompt cursor --force
 ```
-
-### Repository Management
-```bash
-# List registered repositories
-tprompts repos --verbose
-
-# Update repositories
-tprompts update                    # Update default repository
-tprompts update my-repo            # Update specific repository
-tprompts update --all              # Update all repositories
-
-# Version management
-tprompts version my-repo --list           # List available versions
-tprompts version my-repo --checkout v1.0.0  # Switch to specific version
-
-# Unregister repository
-tprompts unregister my-repo
-tprompts unregister my-repo --keep-files  # Keep local files
-```
-
-### Prompt Installation & Removal
-```bash
-# Install prompts
-tprompts install repo/prompt vscode        # Install to VS Code
-tprompts install repo/prompt --editor cursor  # Install to Cursor
-tprompts install repo/prompt vscode --force   # Force overwrite
-
-# Remove installed prompts
-tprompts remove repo/prompt vscode
-tprompts remove repo/prompt cursor --dry-run
-```
-
-**Note**: `tprompts install` will prompt you to choose an editor if not specified. Existing files are never overwritten unless you confirm or pass `--force`.
 
 ## Prompt Repository Format
 Each prompt pack lives in its own folder and must include a `tprompts.json` configuration file describing how files should be installed per editor. A minimal example:
@@ -154,18 +113,12 @@ Refer to `example-prompts/` for complete, multi-editor configurations.
 
 ## Available Commands
 
-Full command documentation is available in `claude.md`. Quick reference:
+- `tprompts install <github-url> <editor>` - Install prompts from a GitHub URL
+  - Options: `--dry-run`, `--force`, `-e/--editor`
 
-- `tprompts register <source>` - Register a repository
-- `tprompts repos` - List registered repositories
-- `tprompts update [repo]` - Update repositories
-- `tprompts unregister <repo>` - Remove a repository
-- `tprompts version <repo>` - Manage repository versions
-- `tprompts list [repo]` - List available prompts
-- `tprompts install <prompt> [editor]` - Install prompts
-- `tprompts remove <prompt> [editor]` - Remove installed prompts
+Run `tprompts --help` or `tprompts install --help` for detailed usage information.
 
-Run `tprompts --help` or `tprompts <command> --help` for detailed usage information.
+Full command documentation is available in `claude.md`.
 
 ## Documentation
 

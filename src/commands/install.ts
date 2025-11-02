@@ -3,29 +3,28 @@ import chalk from 'chalk'
 import * as path from 'path'
 import * as fs from 'fs-extra'
 import * as inquirer from 'inquirer'
-import { RepositoryRegistryManager } from '../lib/repositories/registry'
 import { UrlRepositoryManager } from '../lib/repositories/url'
 import { PromptConfigParser } from '../lib/config/prompt-config'
 import { FileProcessor } from '../lib/utils/file-processor'
 import { PathResolver } from '../lib/utils/path-resolver'
 
 export default class InstallCommand extends Command {
-  static description = 'Install a prompt from a repository to an editor'
+  static description = 'Install a prompt directly from a GitHub URL'
 
   static examples = [
-    '<%= config.bin %> <%= command.id %> my-repo/prompt-name vscode',
-    '<%= config.bin %> <%= command.id %> my-repo/prompt-name --editor cursor',
-    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/prompt-name windsurf',
-    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/tree/main/prompt-name cursor'
+    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/prompt-name vscode',
+    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/tree/main/prompt-name cursor',
+    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/prompt-name claude --dry-run',
+    '<%= config.bin %> <%= command.id %> https://github.com/user/repo/prompt-name windsurf --force'
   ]
 
   static args = {
-    prompt: Args.string({
-      description: 'Prompt identifier (repo/prompt or URL)',
+    url: Args.string({
+      description: 'GitHub URL to the prompt',
       required: true
     }),
     editor: Args.string({
-      description: 'Target editor (vscode, cursor, windsurf, claude-code)',
+      description: 'Target editor (any name supported by the prompt)',
       required: false
     })
   }
@@ -49,55 +48,39 @@ export default class InstallCommand extends Command {
     let cleanup: (() => Promise<void>) | undefined
 
     try {
-      const registryManager = new RepositoryRegistryManager()
+      // Parse GitHub URL
+      const promptId = PathResolver.parsePromptIdentifier(args.url)
 
-      // Parse prompt identifier
-      const promptId = PathResolver.parsePromptIdentifier(args.prompt)
-      
-      // Resolve repository
-      let repository
-      
-      if (promptId.isUrl) {
-        // Handle direct URL installation
-        const urlManager = new UrlRepositoryManager()
-        const result = await urlManager.downloadFromUrl(promptId.originalUrl!, promptId.prompt)
-        repository = result.repository
-        cleanup = result.cleanup
-      } else if (promptId.repository) {
-        repository = await registryManager.getRepository(promptId.repository)
-        if (!repository) {
-          throw new Error(`Repository '${promptId.repository}' is not registered. Use 'tprompts register' first.`)
-        }
-      } else {
-        // Use default repository
-        repository = await registryManager.getDefaultRepository()
-        if (!repository) {
-          throw new Error('No default repository set and no repository specified. Use repo/prompt format or set a default repository.')
-        }
+      if (!promptId.isUrl) {
+        throw new Error('Please provide a GitHub URL. Example: https://github.com/user/repo/prompt-name')
+      }
+
+      // Download from URL
+      const urlManager = new UrlRepositoryManager()
+      const result = await urlManager.downloadFromUrl(promptId.originalUrl!, promptId.prompt)
+      const repository = result.repository
+      cleanup = result.cleanup
+
+      // Find prompt directory
+      const repoPath = repository.path
+      if (!repoPath || !fs.existsSync(repoPath)) {
+        throw new Error(`Repository path not found: ${repoPath}`)
+      }
+
+      const promptPath = path.join(repoPath, promptId.prompt)
+      if (!fs.existsSync(promptPath)) {
+        throw new Error(`Prompt not found: ${promptId.prompt}`)
+      }
+
+      // Load prompt configuration
+      const promptConfig = await PromptConfigParser.parsePromptConfig(promptPath)
+      if (!promptConfig) {
+        throw new Error(`No tprompts.json configuration found in ${promptPath}`)
       }
 
       // Resolve editor
       let editor = args.editor || flags.editor
       if (!editor) {
-        // Get available editors from the prompt config
-        const repoPath = repository.type === 'git' ?
-          repository.path :
-          repository.url
-
-        if (!repoPath || !fs.existsSync(repoPath)) {
-          throw new Error(`Repository path not found: ${repoPath}`)
-        }
-
-        const promptPath = path.join(repoPath!, promptId.prompt)
-        if (!fs.existsSync(promptPath)) {
-          throw new Error(`Prompt not found: ${promptId.prompt} in repository ${repository.name}`)
-        }
-
-        const promptConfig = await PromptConfigParser.parsePromptConfig(promptPath)
-        if (!promptConfig) {
-          throw new Error(`No tprompts.json configuration found in ${promptPath}`)
-        }
-
         const availableEditors = Object.keys(promptConfig.editors)
         if (availableEditors.length === 0) {
           throw new Error('No editors configured in prompt')
@@ -116,26 +99,6 @@ export default class InstallCommand extends Command {
         throw new Error('No editor specified')
       }
 
-      // Find prompt directory
-      const repoPath = repository.type === 'git' ? 
-        repository.path : 
-        repository.url // For local repos, url is the path
-
-      if (!repoPath || !fs.existsSync(repoPath)) {
-        throw new Error(`Repository path not found: ${repoPath}`)
-      }
-
-      const promptPath = path.join(repoPath!, promptId.prompt)
-      if (!fs.existsSync(promptPath)) {
-        throw new Error(`Prompt not found: ${promptId.prompt} in repository ${repository.name}`)
-      }
-
-      // Load prompt configuration
-      const promptConfig = await PromptConfigParser.parsePromptConfig(promptPath)
-      if (!promptConfig) {
-        throw new Error(`No tprompts.json configuration found in ${promptPath}`)
-      }
-
       // Check if editor is supported by this prompt
       if (!promptConfig.editors[editor]) {
         const supportedEditors = Object.keys(promptConfig.editors)
@@ -145,8 +108,7 @@ export default class InstallCommand extends Command {
       const editorConfig = promptConfig.editors[editor]
 
       this.log(`\n${chalk.blue('Installing')} ${chalk.bold(promptConfig.name)} to ${chalk.green(editor)}...`)
-      this.log(`${chalk.dim('Repository:')} ${repository.name}`)
-      this.log(`${chalk.dim('Prompt:')} ${promptId.prompt}`)
+      this.log(`${chalk.dim('Source:')} ${promptId.originalUrl}`)
 
       // Process files according to configuration
       const targets = await FileProcessor.processFiles(
@@ -165,14 +127,14 @@ export default class InstallCommand extends Command {
       for (const target of targets) {
         const relativePath = path.relative(process.cwd(), target.targetPath)
         const sourceFile = path.relative(promptPath, target.sourcePath)
-        
+
         let indicator = chalk.green('✓')
         if (fs.existsSync(target.targetPath)) {
           indicator = chalk.yellow('⚠')
         }
-        
+
         this.log(`  ${indicator} ${sourceFile} → ${relativePath}`)
-        
+
         if (target.prefix) {
           this.log(`    ${chalk.dim('+ prefix:')} ${chalk.dim(target.prefix.replace(/\n/g, '\\n'))}`)
         }
@@ -212,7 +174,7 @@ export default class InstallCommand extends Command {
     } catch (error: any) {
       this.error(error.message)
     } finally {
-      // Clean up temporary files for URL installations
+      // Clean up temporary files
       if (cleanup) {
         await cleanup()
       }
