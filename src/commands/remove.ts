@@ -7,7 +7,6 @@ import { RepositoryRegistryManager } from '../lib/repositories/registry'
 import { PromptConfigParser } from '../lib/config/prompt-config'
 import { FileProcessor } from '../lib/utils/file-processor'
 import { PathResolver } from '../lib/utils/path-resolver'
-import { SupportedEditor } from '../types'
 
 export default class RemoveCommand extends Command {
   static description = 'Remove installed prompts from an editor'
@@ -32,8 +31,7 @@ export default class RemoveCommand extends Command {
   static flags = {
     editor: Flags.string({
       char: 'e',
-      description: 'Target editor',
-      options: ['vscode', 'cursor', 'windsurf', 'claude-code']
+      description: 'Target editor'
     }),
     force: Flags.boolean({
       char: 'f',
@@ -75,19 +73,41 @@ export default class RemoveCommand extends Command {
       // Resolve editor
       let editor = args.editor || flags.editor
       if (!editor) {
-        const supportedEditors: SupportedEditor[] = ['vscode', 'cursor', 'windsurf', 'claude-code']
+        // Get available editors from the prompt config
+        const repoPath = repository.type === 'git' ?
+          repository.path :
+          repository.url
+
+        if (!repoPath || !fs.existsSync(repoPath)) {
+          throw new Error(`Repository path not found: ${repoPath}`)
+        }
+
+        const promptPath = path.join(repoPath!, promptId.prompt)
+        if (!fs.existsSync(promptPath)) {
+          throw new Error(`Prompt not found: ${promptId.prompt} in repository ${repository.name}`)
+        }
+
+        const promptConfig = await PromptConfigParser.parsePromptConfig(promptPath)
+        if (!promptConfig) {
+          throw new Error(`No tprompts.json configuration found in ${promptPath}`)
+        }
+
+        const availableEditors = Object.keys(promptConfig.editors)
+        if (availableEditors.length === 0) {
+          throw new Error('No editors configured in prompt')
+        }
+
         const { selectedEditor } = await inquirer.prompt([{
           type: 'list',
           name: 'selectedEditor',
           message: 'Select target editor:',
-          choices: supportedEditors
+          choices: availableEditors
         }])
         editor = selectedEditor
       }
 
-      // Validate editor
-      if (!editor || !['vscode', 'cursor', 'windsurf', 'claude-code'].includes(editor)) {
-        throw new Error(`Unsupported editor: ${editor}`)
+      if (!editor) {
+        throw new Error('No editor specified')
       }
 
       // Find prompt directory
@@ -111,12 +131,12 @@ export default class RemoveCommand extends Command {
       }
 
       // Check if editor is supported by this prompt
-      if (!promptConfig.editors[editor as SupportedEditor]) {
+      if (!promptConfig.editors[editor]) {
         const supportedEditors = Object.keys(promptConfig.editors)
         throw new Error(`Prompt '${promptId.prompt}' does not support editor '${editor}'. Supported editors: ${supportedEditors.join(', ')}`)
       }
 
-      const editorConfig = promptConfig.editors[editor as SupportedEditor]
+      const editorConfig = promptConfig.editors[editor]
 
       this.log(`\n${chalk.red('Removing')} ${chalk.bold(promptConfig.name)} from ${chalk.green(editor)}...`)
       this.log(`${chalk.dim('Repository:')} ${repository.name}`)

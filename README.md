@@ -3,18 +3,22 @@
 Universal CLI for installing and managing prompt packs across popular coding editors. `tprompts` keeps your prompt content in standalone repositories, lets you register them locally (from Git or the filesystem), discover the prompt packs they expose, and install the configured files into editors such as VS Code, Cursor, Windsurf, and Claude Code.
 
 ## Repository Layout
-- `src/` – TypeScript source for the Oclif-based CLI (`install`, `list`, `register`, `repos` commands)
+- `src/` – TypeScript source for the Oclif-based CLI (all commands)
 - `lib/` – Compiled JavaScript emitted by `npm run build` (published to npm)
 - `example-prompts/` – A sample prompts repository that demonstrates the `tprompts.json` format
-- `docs/tprompts-plan.md` – Design document and roadmap for upcoming commands (update, remove, direct URL installs)
+- `docs/tprompts-plan.md` – Design document and implementation notes
+- `claude.md` – Comprehensive documentation for all CLI commands
 - `node_modules/`, `package.json`, `tsconfig.json` – Standard Node.js project scaffolding
 
 ## Key Features
-- Register prompt repositories from a Git URL or a local folder (`tprompts register`)
-- Maintain a registry of repositories inside `~/.tprompts` with optional default selection (`tprompts repos`)
-- Discover prompt packs and view their metadata pulled from `tprompts.json` (`tprompts list` with `--verbose` for details)
-- Install prompt packs into a chosen editor, including prefix/suffix processing, conflict detection, and optional dry runs (`tprompts install`)
-- Support for VS Code, Cursor, Windsurf, and Claude Code via per-editor configuration blocks
+- **Repository Management**: Register repositories from Git URLs or local paths (`tprompts register`)
+- **Version Control**: Checkout specific branches, tags, or commits; update to latest (`tprompts update`, `tprompts version`)
+- **Direct URL Installation**: Install prompts directly from GitHub URLs without registration
+- **Multi-Repository Support**: Manage multiple prompt sources with optional default selection (`tprompts repos`)
+- **Prompt Discovery**: Browse available prompts and view metadata (`tprompts list --verbose`)
+- **Smart Installation**: Install prompts with prefix/suffix processing, conflict detection, and dry-run mode (`tprompts install`)
+- **Clean Removal**: Uninstall prompts and clean up empty directories (`tprompts remove`)
+- **Editor Support**: VS Code, Cursor, Windsurf, and Claude Code via per-editor configuration blocks
 
 ## Prerequisites
 - Node.js 16+
@@ -38,26 +42,71 @@ You can also execute the TypeScript entry point directly:
 npx tsx src/cli.ts <command> [flags]
 ```
 
-## CLI Usage
+## Quick Start
+
 ```bash
-# Register a repository (Git URL or local folder)
+# Install globally
+npm install -g @thongntit/tprompts
+
+# Or use with npx
+npx @thongntit/tprompts --help
+```
+
+## CLI Usage
+
+### Basic Workflow
+```bash
+# 1. Register a repository (Git URL or local folder)
 tprompts register https://github.com/user/my-prompts.git
-# Custom name and set as default
 tprompts register --name "examples" --default ./example-prompts
 
-# Inspect registered repositories
-tprompts repos --verbose
-
-# Discover the prompt packs exposed by a repository
+# 2. List available prompts
 tprompts list examples --verbose
 
-# Install a prompt pack into an editor
+# 3. Install a prompt pack into an editor
 tprompts install examples/coding-assistant vscode
-# Force overwrite and preview changes
 tprompts install examples/coding-assistant cursor --dry-run
 ```
 
-`tprompts install` will ask you to choose an editor if one is not provided via the positional argument or the `--editor/-e` flag. Existing files are never overwritten unless you confirm or pass `--force`.
+### Direct URL Installation (No Registration Required)
+```bash
+# Install directly from GitHub
+tprompts install https://github.com/user/repo/prompt-name vscode
+tprompts install https://github.com/user/repo/tree/main/prompt-name cursor
+```
+
+### Repository Management
+```bash
+# List registered repositories
+tprompts repos --verbose
+
+# Update repositories
+tprompts update                    # Update default repository
+tprompts update my-repo            # Update specific repository
+tprompts update --all              # Update all repositories
+
+# Version management
+tprompts version my-repo --list           # List available versions
+tprompts version my-repo --checkout v1.0.0  # Switch to specific version
+
+# Unregister repository
+tprompts unregister my-repo
+tprompts unregister my-repo --keep-files  # Keep local files
+```
+
+### Prompt Installation & Removal
+```bash
+# Install prompts
+tprompts install repo/prompt vscode        # Install to VS Code
+tprompts install repo/prompt --editor cursor  # Install to Cursor
+tprompts install repo/prompt vscode --force   # Force overwrite
+
+# Remove installed prompts
+tprompts remove repo/prompt vscode
+tprompts remove repo/prompt cursor --dry-run
+```
+
+**Note**: `tprompts install` will prompt you to choose an editor if not specified. Existing files are never overwritten unless you confirm or pass `--force`.
 
 ## Prompt Repository Format
 Each prompt pack lives in its own folder and must include a `tprompts.json` configuration file describing how files should be installed per editor. A minimal example:
@@ -103,4 +152,23 @@ Refer to `example-prompts/` for complete, multi-editor configurations.
 - `npm run build` – Compile TypeScript to `lib/`
 - `npm test` – Reserved for Jest tests (no suites yet)
 
-See `docs/tprompts-plan.md` for planned enhancements such as repo updates, uninstall workflows, and direct URL installs.
+## Available Commands
+
+Full command documentation is available in `claude.md`. Quick reference:
+
+- `tprompts register <source>` - Register a repository
+- `tprompts repos` - List registered repositories
+- `tprompts update [repo]` - Update repositories
+- `tprompts unregister <repo>` - Remove a repository
+- `tprompts version <repo>` - Manage repository versions
+- `tprompts list [repo]` - List available prompts
+- `tprompts install <prompt> [editor]` - Install prompts
+- `tprompts remove <prompt> [editor]` - Remove installed prompts
+
+Run `tprompts --help` or `tprompts <command> --help` for detailed usage information.
+
+## Documentation
+
+- **`claude.md`** - Comprehensive command reference with examples
+- **`docs/tprompts-plan.md`** - Design document and implementation notes
+- **`example-prompts/`** - Sample prompt repository demonstrating the format
