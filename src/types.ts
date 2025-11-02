@@ -17,7 +17,7 @@ export interface RepositoryMetadata {
   author?: string
   version?: string
   homepage?: string
-  defaultEditor?: SupportedEditor
+  defaultEditor?: string
   categories?: string[]
   temporary?: boolean
   originalUrl?: string
@@ -33,7 +33,7 @@ export interface PromptConfig {
   name: string
   description?: string
   version?: string
-  editors: Record<SupportedEditor, EditorPromptConfig>
+  editors: Record<string, EditorPromptConfig>
 }
 
 export interface EditorPromptConfig {
@@ -70,7 +70,7 @@ export interface InstallationTarget {
 }
 
 export interface UserConfig {
-  defaultEditor?: SupportedEditor
+  defaultEditor?: string
   repositoriesPath?: string
   backupEnabled?: boolean
   autoUpdate?: boolean
